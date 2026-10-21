@@ -38,4 +38,83 @@ function finish(){tkpRecord(correct/QUESTIONS.length*100);play('finish');let pct
 intro();
 
 setTimeout(tkpGate,0);
-</script></body></html>
+</script><style id="tkp-voice-css">
+#tkp-voice-panel{position:fixed;right:12px;bottom:12px;z-index:99990;max-width:min(460px,calc(100vw - 24px));background:#102d38f2;color:white;border:1px solid #f5d58a;border-radius:16px;padding:11px 13px;box-shadow:0 8px 30px #0009;font:600 14px/1.4 system-ui,Arial,sans-serif}
+#tkp-voice-panel button,#tkp-voice-panel select{border:1px solid #f5d58a88;border-radius:9px;background:#f8df9e;color:#142a31;padding:8px 10px;font-weight:800;cursor:pointer;font-size:13px}
+#tkp-voice-panel button:disabled{opacity:.5;cursor:not-allowed}
+#tkp-voice-panel .tkp-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:7px}
+#tkp-voice-status{font-size:12px;opacity:.95;max-width:430px}
+#tkp-voice-confirm{background:#8be6bb!important;display:none}
+#tkp-voice-panel .tkp-heading{font-size:13px;color:#ffdf92;font-weight:900}
+@media(max-width:600px){#tkp-voice-panel{left:8px;right:8px;bottom:6px;padding:8px 10px}#tkp-voice-panel button{padding:6px 8px}}
+</style>
+<div id="tkp-voice-panel" role="region" aria-label="Điều khiển đọc bài bằng tiếng Việt">
+ <div class="tkp-heading">🔊 GIỌNG ĐỌC HƯỚNG DẪN TIẾNG VIỆT</div>
+ <div id="tkp-voice-status" role="status">Nhấn BẮT ĐẦU để nghe câu hỏi và 4 đáp án.</div>
+ <div class="tkp-row">
+  <button id="tkp-voice-replay" type="button">🔁 Nghe lại</button>
+  <button id="tkp-voice-pause" type="button">⏸ Tạm dừng</button>
+  <button id="tkp-voice-mute" type="button">🔊 Giọng đọc: Bật</button>
+  <select id="tkp-voice-speed" aria-label="Tốc độ đọc"><option value="0.8">0,8×</option><option value="0.9" selected>0,9×</option><option value="1">1×</option><option value="1.15">1,15×</option></select>
+  <button id="tkp-voice-confirm" type="button">✅ Tôi đã đọc hết giải thích</button>
+ </div>
+</div>
+<script id="tkp-voice-script">
+(function(){
+ 'use strict';
+ const $=id=>document.getElementById(id);
+ const speechSupported=!!(window.speechSynthesis&&window.SpeechSynthesisUtterance);
+ const status=$('tkp-voice-status'), replay=$('tkp-voice-replay'),pause=$('tkp-voice-pause'),mute=$('tkp-voice-mute'),speed=$('tkp-voice-speed'),confirm=$('tkp-voice-confirm');
+ let enabled=true,phase='intro',currentSignature='',done=false,activeToken=0,spokenText='',spokenType='',fallback=false,started=false;
+ let voice=null;
+ try{enabled=localStorage.getItem('tkp21_voice_enabled')!=='false';speed.value=localStorage.getItem('tkp21_voice_speed')||'0.9'}catch(e){}
+ function setStatus(s){status.textContent=s}
+ function getVoice(){if(!speechSupported)return null;let vs=window.speechSynthesis.getVoices();return vs.find(v=>v.lang.toLowerCase()==='vi-vn')||vs.find(v=>v.lang.toLowerCase().startsWith('vi'))||null}
+ function stop(){activeToken++;if(speechSupported){try{window.speechSynthesis.cancel()}catch(e){}}}
+ function read(text,type,complete){stop();spokenText=text;spokenType=type;let token=activeToken;if(!enabled||!speechSupported){if(type==='explain')showFallback(!speechSupported?'Trình duyệt không hỗ trợ giọng đọc.':'Giọng đọc đang tắt.');else setStatus('Có thể đọc câu hỏi trên màn hình.');return}
+  if(!text.trim()){if(type==='explain')showFallback('Không tìm thấy nội dung giải thích.');return}
+  const v=getVoice();if(!v){if(type==='explain')showFallback('Thiết bị không có giọng tiếng Việt.');else setStatus('Thiết bị chưa có giọng tiếng Việt; hãy đọc nội dung trên màn hình.');return}
+  voice=v;setStatus(type==='explain'?'🔊 Đang đọc phản hồi và toàn bộ lời giải thích…':'🔊 Đang đọc câu hỏi và 4 đáp án…');
+  const u=new SpeechSynthesisUtterance(text);u.lang='vi-VN';u.voice=v;u.rate=Number(speed.value)||0.9;u.pitch=1;u.volume=1;
+  u.onend=()=>{if(token!==activeToken)return;if(type==='explain'){done=true;phase='finished';confirm.style.display='none';setStatus('✅ Đã đọc hết lời giải thích. Bạn có thể sang câu tiếp theo.');if(complete)complete()}else setStatus('✅ Đã đọc xong câu hỏi và các đáp án. Hãy chọn câu trả lời.')};
+  u.onerror=()=>{if(token!==activeToken)return;if(type==='explain')showFallback('Không thể hoàn tất âm thanh.');else setStatus('Không phát được âm thanh. Bạn có thể đọc câu hỏi trên màn hình.')};
+  try{window.speechSynthesis.speak(u)}catch(e){if(type==='explain')showFallback('Thiết bị không thể phát giọng nói.');else setStatus('Không thể phát giọng nói trên thiết bị này.')}
+ }
+ function showFallback(reason){done=false;fallback=true;phase='fallback';confirm.style.display='inline-block';setStatus('⚠️ '+reason+' Hãy đọc toàn bộ giải thích trên màn hình, rồi nhấn xác nhận để tiếp tục.')}
+ function questionElement(){return document.querySelector('#quiz:not(.hidden) #question')||document.querySelector('#app .question h2')||document.querySelector('#app .question')||document.querySelector('#app h2')}
+ function answers(){return [...document.querySelectorAll('#quiz:not(.hidden) #answers .option,#app .choice,#app #options .option,#app .answers .option')].filter(el=>el.offsetParent!==null)}
+ function getQuestion(){let el=questionElement(),ans=answers();if(!el||ans.length!==4)return null;let q=el.textContent.trim();let a=ans.map((el,i)=>{let text=el.textContent.trim();text=text.replace(/^\s*[ABCD]\s*/,'');return 'Đáp án '+ 'ABCD'[i]+'. '+text});return {signature:q+'|'+a.join('|'),text:'Câu hỏi. '+q+'. '+a.join('. ')}}
+ function getFeedback(){let el=document.querySelector('#quiz:not(.hidden) #feedback:not(.hidden)')||document.querySelector('#app #feedback .feedback')||document.querySelector('#app #feedback .result');if(!el||!el.textContent.trim())return null;return el}
+ function isQuiz(){return !!getQuestion()}
+ function nextBtn(){return document.getElementById('next')}
+ function updateLock(){let n=nextBtn();if(!n)return;if(phase==='explaining'||phase==='fallback'){if(!n.disabled)n.disabled=true;n.setAttribute('aria-disabled','true');n.title='Hãy nghe hoặc đọc hết lời giải thích trước khi chuyển câu'}else if(phase==='finished'){if(n.disabled)n.disabled=false;n.removeAttribute('aria-disabled');n.title=''} }
+ function startQuestion(q){stop();phase='question';done=false;fallback=false;confirm.style.display='none';currentSignature=q.signature;started=true;read(q.text,'question')}
+ function afterAnswer(){if(phase==='explaining'||phase==='fallback'||phase==='finished')return;let f=getFeedback();if(!f)return;phase='explaining';done=false;fallback=false;updateLock();
+  let explain=f.querySelector('.explain')||f.querySelector('#explanation')||document.querySelector('#explanation');let explanation=explain?explain.textContent.trim():'';
+  let q=null;try{q=QUESTIONS[index]}catch(e){}
+  if(!explanation&&q)explanation=[q.explanation||q.explain||'',...(Array.isArray(q.wrong)?q.wrong:[])].join('. ');
+  const title=f.textContent||'';let praise=/CHÚC MỪNG|CHÍNH XÁC/i.test(title)&&!/CHƯA CHUẨN XÁC/i.test(title);
+  const isReveal=/ĐÁP ÁN ĐÃ ĐƯỢC CÔNG BỐ|XEM ĐÁP ÁN|ĐÁP ÁN ĐÚNG LÀ/i.test(title)&&!/CHÚC MỪNG|CHƯA CHUẨN XÁC/i.test(title);
+  let intro=isReveal?'Chúng ta cùng nghe lời giải thích nhé.':praise?'Chúc mừng bạn! Và cũng hãy nghe lời giải thích nhé!':'Rất tiếc! Chúng ta cùng nghe giải thích nhé!';
+  const correctChoice=[...answers()].find(x=>x.classList.contains('correct'));
+  let correctText=correctChoice?' Đáp án đúng là: '+correctChoice.textContent.trim()+'. ':'';
+  read(intro+correctText+' Phần giải thích. '+explanation,'explain');updateLock();
+ }
+ let queued=false;function inspect(){if(queued)return;queued=true;queueMicrotask(()=>{queued=false;let q=getQuestion();if(!q){if(started){stop();phase='intro';started=false;currentSignature='';confirm.style.display='none'}return}
+  if(!started||q.signature!==currentSignature){startQuestion(q)}
+  if(getFeedback())afterAnswer();updateLock();})}
+ const observer=new MutationObserver(inspect);observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','disabled']});
+ document.addEventListener('click',e=>{let n=e.target.closest&&e.target.closest('#next');if(n&&(phase==='explaining'||phase==='fallback')){e.preventDefault();e.stopImmediatePropagation();updateLock()}},true);
+ document.addEventListener('keydown',e=>{let n=e.target.closest&&e.target.closest('#next');if(n&&(phase==='explaining'||phase==='fallback')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopImmediatePropagation()}},true);
+ confirm.onclick=()=>{if(phase!=='fallback')return;done=true;fallback=false;phase='finished';confirm.style.display='none';setStatus('✅ Bạn đã xác nhận đọc hết lời giải thích. Có thể sang câu tiếp theo.');updateLock()};
+ replay.onclick=()=>{if(!started){setStatus('Hãy nhấn BẮT ĐẦU TRÒ CHƠI trước.');return}if(phase==='explaining'||phase==='fallback'||phase==='finished'){phase='explaining';done=false;updateLock();read(spokenType==='explain'?spokenText:((getFeedback()||{}).textContent||''),'explain')}else{let q=getQuestion();if(q)read(q.text,'question')}};
+ pause.onclick=()=>{if(!speechSupported)return;try{if(window.speechSynthesis.paused){window.speechSynthesis.resume();pause.textContent='⏸ Tạm dừng'}else if(window.speechSynthesis.speaking){window.speechSynthesis.pause();pause.textContent='▶ Tiếp tục';setStatus('⏸ Đã tạm dừng giọng đọc; chưa thể sang câu tiếp theo.')}}catch(e){}};
+ mute.onclick=()=>{enabled=!enabled;try{localStorage.setItem('tkp21_voice_enabled',String(enabled))}catch(e){}mute.textContent=enabled?'🔊 Giọng đọc: Bật':'🔇 Giọng đọc: Tắt';if(!enabled){stop();if(phase==='explaining'){showFallback('Bạn đã tắt giọng đọc.')}else setStatus('Đã tắt giọng đọc.')}else{setStatus('Đã bật giọng đọc. Nhấn Nghe lại để phát âm thanh.')}};
+ speed.onchange=()=>{try{localStorage.setItem('tkp21_voice_speed',speed.value)}catch(e){}setStatus('Tốc độ đọc đã được cập nhật cho lượt đọc tiếp theo.')};
+ mute.textContent=enabled?'🔊 Giọng đọc: Bật':'🔇 Giọng đọc: Tắt';
+ if(!speechSupported)setStatus('Thiết bị không hỗ trợ giọng đọc. Khi trả lời, bạn sẽ xác nhận đã đọc giải thích.');
+ else {let voices=window.speechSynthesis.getVoices();if(!voices.length)window.speechSynthesis.onvoiceschanged=()=>{voice=getVoice()};}
+ inspect();
+})();
+</script>
+</body></html>
